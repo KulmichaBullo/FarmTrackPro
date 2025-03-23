@@ -315,14 +315,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // OpenWeather API proxy
   app.get("/api/weather/openweather", async (req: Request, res: Response) => {
-    // This would be implemented with a real OpenWeather API key
-    // For now, just return the stored weather data
     try {
-      const weather = await storage.getWeatherData();
-      if (!weather) {
-        return res.status(404).json({ message: "Weather data not found" });
+      const { lat, lon } = req.query;
+      if (!lat || !lon) {
+        return res.status(400).json({ message: "Missing latitude or longitude" });
       }
-      res.json(weather);
+
+      const apiKey = process.env.OPENWEATHER_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ message: "OpenWeather API key not configured" });
+      }
+
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`
+      );
+
+      if (!response.ok) {
+        throw new Error(`OpenWeather API error: ${response.statusText}`);
+      }
+
+      const weatherData = await response.json();
+      const formattedWeather = {
+        temperature: Math.round(weatherData.main.temp),
+        condition: weatherData.weather[0].main,
+        humidity: weatherData.main.humidity,
+        wind: Math.round(weatherData.wind.speed),
+        alerts: JSON.stringify([]),
+        forecast: JSON.stringify([]),
+        date: new Date().toISOString(),
+        id: 1,
+        createdAt: new Date().toISOString()
+      };
+
+      res.json(formattedWeather);
     } catch (error) {
       res.status(500).json({ message: "Error fetching weather data", error: (error as Error).message });
     }
