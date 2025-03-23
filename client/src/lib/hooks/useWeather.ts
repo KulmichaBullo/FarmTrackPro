@@ -31,7 +31,6 @@ interface WeatherData {
 
 export function useWeather() {
   const { toast } = useToast();
-  const location = useLocation();
   
   const {
     data: weatherResponse,
@@ -40,21 +39,7 @@ export function useWeather() {
     error,
     refetch
   } = useQuery<WeatherApiResponse>({
-    queryKey: ['/api/weather', location.coordinates],
-    queryFn: async () => {
-      if (location.error) {
-        throw new Error(`Location error: ${location.error}`);
-      }
-      if (!location.coordinates.latitude || !location.coordinates.longitude) {
-        throw new Error('Location not available yet');
-      }
-      const response = await fetch(`/api/weather/openweather?lat=${location.coordinates.latitude}&lon=${location.coordinates.longitude}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch weather data');
-      }
-      return response.json();
-    },
-    enabled: !location.loading && !location.error && !!location.coordinates.latitude,
+    queryKey: ['/api/weather'],
     staleTime: 1000 * 60 * 30, // 30 minutes
   });
 
