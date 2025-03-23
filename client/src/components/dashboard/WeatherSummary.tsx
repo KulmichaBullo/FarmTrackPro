@@ -21,6 +21,11 @@ const getWeatherIcon = (condition: string) => {
   }
 };
 
+// Helper function to convert Fahrenheit to Celsius
+const fahrenheitToCelsius = (fahrenheit: number) => {
+  return Math.round((fahrenheit - 32) * 5 / 9);
+};
+
 // Helper function to get day of week from date string
 const getDayOfWeek = (dayIndex: number) => {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -110,7 +115,7 @@ export default function WeatherSummary() {
                 {getWeatherIcon(weather.condition)}
               </span>
               <div>
-                <div className="text-3xl font-light">{weather.temperature}°F</div>
+                <div className="text-3xl font-light">{fahrenheitToCelsius(weather.temperature)}°C</div>
                 <div className="text-gray-600">{weather.condition}</div>
               </div>
             </div>
@@ -139,7 +144,7 @@ export default function WeatherSummary() {
               <span className="material-icons text-accent-light">
                 {getWeatherIcon(day.condition)}
               </span>
-              <div className="text-sm font-medium">{day.temperature}°F</div>
+              <div className="text-sm font-medium">{fahrenheitToCelsius(day.temperature)}°C</div>
             </div>
           ))}
         </div>
