@@ -2,6 +2,7 @@ import { useWeather } from "@/lib/hooks/useWeather";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState } from "react";
 
 // Helper function to get weather icon
 const getWeatherIcon = (condition: string) => {
@@ -36,13 +37,14 @@ const getDayOfWeek = (dayIndex: number) => {
 
 export default function WeatherSummary() {
   const { weather, isLoading, refetch } = useWeather();
+  const [showAllDays, setShowAllDays] = useState(false);
 
   if (isLoading) {
     return (
       <div className="mb-6">
         <Card>
           <div className="p-4 bg-accent text-white flex justify-between items-center">
-            <h2 className="text-lg font-medium">Current Weather</h2>
+            <h2 className="text-lg font-medium">Weather Forecast</h2>
             <Button variant="ghost" size="icon" className="text-white" onClick={() => refetch()}>
               <span className="material-icons">refresh</span>
             </Button>
@@ -63,9 +65,9 @@ export default function WeatherSummary() {
               </div>
             </div>
           </CardContent>
-          <div className="flex border-t">
-            {Array(5).fill(0).map((_, i) => (
-              <div key={i} className="flex-1 p-3 text-center border-r last:border-r-0">
+          <div className="flex flex-wrap border-t">
+            {Array(7).fill(0).map((_, i) => (
+              <div key={i} className="flex-1 p-3 text-center border-r last:border-r-0" style={{ minWidth: '14%' }}>
                 <Skeleton className="h-4 w-8 mx-auto mb-2" />
                 <Skeleton className="h-6 w-6 mx-auto mb-2" />
                 <Skeleton className="h-4 w-10 mx-auto" />
@@ -82,7 +84,7 @@ export default function WeatherSummary() {
       <div className="mb-6">
         <Card>
           <div className="p-4 bg-accent text-white flex justify-between items-center">
-            <h2 className="text-lg font-medium">Current Weather</h2>
+            <h2 className="text-lg font-medium">Weather Forecast</h2>
             <Button variant="ghost" size="icon" className="text-white" onClick={() => refetch()}>
               <span className="material-icons">refresh</span>
             </Button>
@@ -99,14 +101,38 @@ export default function WeatherSummary() {
     );
   }
 
+  // Ensure we have 7 days of forecast data
+  const forecastData = weather.forecast || [];
+  while (forecastData.length < 7) {
+    const index = forecastData.length;
+    forecastData.push({
+      day: getDayOfWeek(index),
+      condition: weather.condition,
+      temperature: weather.temperature
+    });
+  }
+
   return (
     <div className="mb-6">
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="p-4 bg-accent text-white flex justify-between items-center">
-          <h2 className="text-lg font-medium">Current Weather</h2>
-          <Button variant="ghost" size="icon" className="text-white" onClick={() => refetch()}>
-            <span className="material-icons">refresh</span>
-          </Button>
+          <h2 className="text-lg font-medium">Weather Forecast</h2>
+          <div className="flex items-center">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white mr-2"
+              onClick={() => setShowAllDays(!showAllDays)}
+            >
+              <span className="material-icons text-sm mr-1">
+                {showAllDays ? 'unfold_less' : 'unfold_more'}
+              </span>
+              {showAllDays ? 'Less' : 'All 7 Days'}
+            </Button>
+            <Button variant="ghost" size="icon" className="text-white" onClick={() => refetch()}>
+              <span className="material-icons">refresh</span>
+            </Button>
+          </div>
         </div>
         <div className="p-4">
           <div className="flex items-center justify-between">
@@ -137,11 +163,19 @@ export default function WeatherSummary() {
             </div>
           </div>
         </div>
-        <div className="flex border-t">
-          {weather.forecast && weather.forecast.map((day, index) => (
-            <div key={index} className="flex-1 p-3 text-center border-r last:border-r-0">
-              <div className="text-sm text-gray-600">{day.day || getDayOfWeek(index)}</div>
-              <span className="material-icons text-accent-light">
+        
+        <div className="flex flex-wrap border-t">
+          {forecastData.slice(0, showAllDays ? 7 : 5).map((day, index) => (
+            <div 
+              key={index} 
+              className="p-3 text-center border-r last:border-r-0" 
+              style={{ 
+                flex: showAllDays ? '1 1 calc(100% / 7)' : '1 1 20%',
+                minWidth: showAllDays ? '14%' : '20%' 
+              }}
+            >
+              <div className="text-sm font-medium text-gray-600">{day.day || getDayOfWeek(index)}</div>
+              <span className="material-icons text-accent-light my-1">
                 {getWeatherIcon(day.condition)}
               </span>
               <div className="text-sm font-medium">{fahrenheitToCelsius(day.temperature)}°C</div>

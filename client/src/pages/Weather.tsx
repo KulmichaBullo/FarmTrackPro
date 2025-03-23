@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Helper function to get weather icon
 const getWeatherIcon = (condition: string) => {
@@ -32,13 +33,19 @@ const getDayOfWeek = (dayIndex: number) => {
   return days[date.getDay()];
 };
 
-// Helper function for temperature color
-const getTempColor = (temp: number) => {
-  if (temp >= 85) return 'text-red-500';
-  if (temp >= 75) return 'text-orange-500';
-  if (temp >= 65) return 'text-yellow-500';
-  if (temp >= 55) return 'text-green-500';
-  if (temp >= 45) return 'text-blue-400';
+// Helper function to convert Fahrenheit to Celsius
+const fahrenheitToCelsius = (fahrenheit: number) => {
+  return Math.round((fahrenheit - 32) * 5 / 9);
+};
+
+// Helper function for temperature color (using Celsius values)
+const getTempColor = (tempF: number) => {
+  const tempC = fahrenheitToCelsius(tempF);
+  if (tempC >= 30) return 'text-red-500';
+  if (tempC >= 24) return 'text-orange-500';
+  if (tempC >= 18) return 'text-yellow-500';
+  if (tempC >= 13) return 'text-green-500';
+  if (tempC >= 7) return 'text-blue-400';
   return 'text-blue-600';
 };
 
@@ -111,11 +118,11 @@ export default function Weather() {
         
         <Card>
           <CardHeader className="bg-accent-light text-white">
-            <h2 className="text-lg font-medium">5-Day Forecast</h2>
+            <h2 className="text-lg font-medium">7-Day Forecast</h2>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="grid grid-cols-1 md:grid-cols-5">
-              {Array(5).fill(0).map((_, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-7">
+              {Array(7).fill(0).map((_, i) => (
                 <div key={i} className="p-4 border-b md:border-b-0 md:border-r last:border-r-0 last:border-b-0 flex md:flex-col items-center md:items-center justify-between">
                   <Skeleton className="h-5 w-12 mb-2" />
                   <div className="flex flex-col items-center">
@@ -153,6 +160,17 @@ export default function Weather() {
         </Card>
       </div>
     );
+  }
+
+  // Ensure we have 7 days of forecast data
+  const forecastData = weather.forecast || [];
+  while (forecastData.length < 7) {
+    const index = forecastData.length;
+    forecastData.push({
+      day: getDayOfWeek(index),
+      condition: weather.condition,
+      temperature: weather.temperature
+    });
   }
 
   return (
@@ -201,7 +219,7 @@ export default function Weather() {
               <span className="material-icons text-6xl text-accent-light mb-2">
                 {getWeatherIcon(weather.condition)}
               </span>
-              <div className="text-4xl font-light">{weather.temperature}°F</div>
+              <div className="text-4xl font-light">{fahrenheitToCelsius(weather.temperature)}°C</div>
               <div className="text-gray-600">{weather.condition}</div>
             </div>
             
@@ -224,7 +242,7 @@ export default function Weather() {
                 <div className="text-gray-500 text-sm mb-1">Feels Like</div>
                 <div className="flex items-center">
                   <span className="material-icons text-accent mr-2">thermostat</span>
-                  <span className="text-2xl font-light">{Math.round(weather.temperature * 0.98)}°F</span>
+                  <span className="text-2xl font-light">{fahrenheitToCelsius(Math.round(weather.temperature * 0.98))}°C</span>
                 </div>
               </div>
             </div>
@@ -232,29 +250,61 @@ export default function Weather() {
         </CardContent>
       </Card>
       
-      <Card>
-        <CardHeader className="bg-accent-light text-white">
-          <h2 className="text-lg font-medium">5-Day Forecast</h2>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-1 md:grid-cols-5">
-            {weather.forecast && weather.forecast.map((day, index) => (
-              <div key={index} className="p-4 border-b md:border-b-0 md:border-r last:border-r-0 last:border-b-0 flex md:flex-col items-center md:items-center justify-between">
-                <div className="font-medium md:mb-3">{day.day || getDayOfWeek(index)}</div>
-                <div className="flex flex-col items-center md:mb-3">
-                  <span className="material-icons text-2xl text-accent-light">
-                    {getWeatherIcon(day.condition)}
-                  </span>
-                  <div className="text-sm text-gray-600">{day.condition}</div>
-                </div>
-                <div className={`text-lg font-medium ${getTempColor(day.temperature)}`}>
-                  {day.temperature}°F
-                </div>
+      <Tabs defaultValue="default" className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-medium">7-Day Forecast</h2>
+          <TabsList>
+            <TabsTrigger value="default">Grid View</TabsTrigger>
+            <TabsTrigger value="list">List View</TabsTrigger>
+          </TabsList>
+        </div>
+        
+        <TabsContent value="default">
+          <Card>
+            <CardContent className="p-0">
+              <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-7">
+                {forecastData.map((day, index) => (
+                  <div key={index} className="p-4 border-b sm:border-b-0 sm:border-r last:border-r-0 last:border-b-0 flex sm:flex-col items-center sm:items-center justify-between">
+                    <div className="font-medium sm:mb-3">{day.day || getDayOfWeek(index)}</div>
+                    <div className="flex flex-col items-center sm:mb-3">
+                      <span className="material-icons text-2xl text-accent-light">
+                        {getWeatherIcon(day.condition)}
+                      </span>
+                      <div className="text-sm text-gray-600">{day.condition}</div>
+                    </div>
+                    <div className={`text-lg font-medium ${getTempColor(day.temperature)}`}>
+                      {fahrenheitToCelsius(day.temperature)}°C
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="list">
+          <Card>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {forecastData.map((day, index) => (
+                  <div key={index} className="flex items-center justify-between p-4">
+                    <div className="font-medium w-20">{day.day || getDayOfWeek(index)}</div>
+                    <div className="flex items-center justify-center flex-1">
+                      <span className="material-icons text-xl text-accent-light mr-2">
+                        {getWeatherIcon(day.condition)}
+                      </span>
+                      <span className="text-sm text-gray-600">{day.condition}</span>
+                    </div>
+                    <div className={`text-lg font-medium ${getTempColor(day.temperature)}`}>
+                      {fahrenheitToCelsius(day.temperature)}°C
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
       
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>

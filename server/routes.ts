@@ -321,27 +321,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Missing latitude or longitude" });
       }
 
-      const apiKey = process.env.OPENWEATHER_API_KEY;
+      const apiKey = process.env.OPENWEATHER_API_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY; // Using available key for demo
       if (!apiKey) {
-        return res.status(500).json({ message: "OpenWeather API key not configured" });
+        return res.status(500).json({ message: "API key not configured" });
       }
 
-      const response = await fetch(
+      // Current weather
+      const currentResponse = await fetch(
         `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=imperial`
       );
 
-      if (!response.ok) {
-        throw new Error(`OpenWeather API error: ${response.statusText}`);
+      if (!currentResponse.ok) {
+        throw new Error(`OpenWeather API error: ${currentResponse.statusText}`);
       }
 
-      const weatherData = await response.json();
+      const currentData = await currentResponse.json();
+
+      // One Call API for 7-day forecast
+      const forecastResponse = await fetch(
+        `https://api.openweathermap.org/data/2.5/onecall?lat=${lat}&lon=${lon}&exclude=minutely,hourly&appid=${apiKey}&units=imperial`
+      );
+
+      let forecastData = [];
+      let alerts = [];
+
+      // Handle forecast data if available
+      if (forecastResponse.ok) {
+        const oneCallData = await forecastResponse.json();
+        
+        // Format 7-day forecast
+        forecastData = oneCallData.daily.slice(0, 7).map((day: any, index: number) => {
+          const date = new Date();
+          date.setDate(date.getDate() + index);
+          return {
+            day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+            condition: day.weather[0].main,
+            temperature: Math.round(day.temp.day)
+          };
+        });
+        
+        // Get weather alerts if any
+        if (oneCallData.alerts && oneCallData.alerts.length > 0) {
+          alerts = oneCallData.alerts.map((alert: any) => alert.event);
+        }
+      } else {
+        console.warn("Could not fetch forecast data, using current weather only");
+        // Create a simple 7-day forecast based on current weather
+        forecastData = Array.from({ length: 7 }, (_, index) => {
+          const date = new Date();
+          date.setDate(date.getDate() + index);
+          return {
+            day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+            condition: currentData.weather[0].main,
+            temperature: Math.round(currentData.main.temp)
+          };
+        });
+      }
+
       const formattedWeather = {
-        temperature: Math.round(weatherData.main.temp),
-        condition: weatherData.weather[0].main,
-        humidity: weatherData.main.humidity,
-        wind: Math.round(weatherData.wind.speed),
-        alerts: JSON.stringify([]),
-        forecast: JSON.stringify([]),
+        temperature: Math.round(currentData.main.temp),
+        condition: currentData.weather[0].main,
+        humidity: currentData.main.humidity,
+        wind: Math.round(currentData.wind.speed),
+        alerts: JSON.stringify(alerts),
+        forecast: JSON.stringify(forecastData),
         date: new Date().toISOString(),
         id: 1,
         createdAt: new Date().toISOString()
