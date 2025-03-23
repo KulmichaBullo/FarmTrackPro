@@ -11,50 +11,84 @@ interface MapComponentProps {
 
 export default function MapComponent({ fields, editable = false, onBoundaryChange }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const [map, setMap] = useState<any>(null);
-  const [drawingManager, setDrawingManager] = useState<any>(null);
-  const [fieldPolygons, setFieldPolygons] = useState<any[]>([]);
-  const [drawnPolygon, setDrawnPolygon] = useState<any>(null);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Component-wide references stored in Refs to avoid state updates
+  const mapInstanceRef = useRef<any>(null);
+  const drawingManagerRef = useRef<any>(null);
+  const polygonsRef = useRef<any[]>([]);
+  const drawnPolygonRef = useRef<any>(null);
   
   const location = useLocation();
   
   // Load Google Maps API
   useEffect(() => {
-    let isMounted = true;
-    
-    const initializeGoogleMaps = async () => {
+    const loadGoogleMaps = async () => {
       try {
         setIsLoading(true);
+        setError(null);
         await loadGoogleMapsAPI();
-        if (isMounted) setError(null);
+        setIsMapLoaded(true);
       } catch (err) {
         console.error("Failed to load Google Maps API:", err);
-        if (isMounted) setError("Failed to load Google Maps API");
+        setError("Failed to load Google Maps API");
       } finally {
-        if (isMounted) setIsLoading(false);
+        setIsLoading(false);
       }
     };
     
-    initializeGoogleMaps();
+    loadGoogleMaps();
     
+    // Clean up on unmount
     return () => {
-      isMounted = false;
+      cleanupGoogleMaps();
     };
   }, []);
   
-  // Initialize map
+  // Function to clean up Google Maps objects
+  const cleanupGoogleMaps = () => {
+    try {
+      // Clean up polygons
+      if (polygonsRef.current) {
+        polygonsRef.current.forEach(polygon => {
+          if (polygon && typeof polygon.setMap === 'function') {
+            polygon.setMap(null);
+          }
+        });
+        polygonsRef.current = [];
+      }
+      
+      // Clean up drawn polygon
+      if (drawnPolygonRef.current && typeof drawnPolygonRef.current.setMap === 'function') {
+        drawnPolygonRef.current.setMap(null);
+        drawnPolygonRef.current = null;
+      }
+      
+      // Clean up drawing manager
+      if (drawingManagerRef.current && typeof drawingManagerRef.current.setMap === 'function') {
+        drawingManagerRef.current.setMap(null);
+        drawingManagerRef.current = null;
+      }
+      
+      // Clean up map
+      mapInstanceRef.current = null;
+    } catch (error) {
+      console.error("Error cleaning up Google Maps:", error);
+    }
+  };
+  
+  // Initialize map when Google Maps is loaded
   useEffect(() => {
-    if (!mapRef.current || isLoading) return;
-    
-    // Check if Google Maps API is available
-    if (!window.google || !window.google.maps) {
-      setError("Google Maps API not loaded");
+    if (!isMapLoaded || !mapRef.current || !window.google || !window.google.maps) {
       return;
     }
     
     try {
+      // Clear previous instances if they exist
+      cleanupGoogleMaps();
+      
       // Set default location if user location is not available
       const defaultLat = 38.1234;
       const defaultLng = -95.6789;
@@ -69,8 +103,9 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
         streetViewControl: false,
       };
       
-      const newMap = new window.google.maps.Map(mapRef.current, mapOptions);
-      setMap(newMap);
+      // Create new map instance
+      const mapInstance = new window.google.maps.Map(mapRef.current, mapOptions);
+      mapInstanceRef.current = mapInstance;
       
       // Initialize drawing manager if in editable mode
       if (editable && window.google.maps.drawing) {
@@ -91,30 +126,39 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
           }
         };
         
-        const newDrawingManager = new window.google.maps.drawing.DrawingManager(drawingManagerOptions);
-        newDrawingManager.setMap(newMap);
-        setDrawingManager(newDrawingManager);
+        const drawingManager = new window.google.maps.drawing.DrawingManager(drawingManagerOptions);
+        drawingManager.setMap(mapInstance);
+        drawingManagerRef.current = drawingManager;
         
-        // Add event listener for when polygon is complete
-        window.google.maps.event.addListener(newDrawingManager, 'polygoncomplete', function(polygon: any) {
-          // Disable drawing mode after polygon is drawn
-          newDrawingManager.setDrawingMode(null);
+        // Handle polygon drawing completion
+        const handlePolygonComplete = (polygon: any) => {
+          // Disable drawing mode
+          drawingManager.setDrawingMode(null);
           
-          // Clear any previously drawn polygon
-          if (drawnPolygon) {
-            drawnPolygon.setMap(null);
+          // Clear any previous drawn polygon
+          if (drawnPolygonRef.current) {
+            drawnPolygonRef.current.setMap(null);
           }
           
-          setDrawnPolygon(polygon);
+          drawnPolygonRef.current = polygon;
           
-          // Listen for polygon path changes and update coordinates
+          // Create function to update coordinates
           const updateCoordinates = () => {
             if (!polygon || !polygon.getPath) return;
             
             const path = polygon.getPath();
-            const coordinates = path.getArray().map((latLng: any) => [latLng.lng(), latLng.lat()]);
+            const coordinates = [];
+            
+            // Convert path to coordinates array
+            for (let i = 0; i < path.getLength(); i++) {
+              const point = path.getAt(i);
+              coordinates.push([point.lng(), point.lat()]);
+            }
+            
             // Close the polygon by repeating the first point
-            coordinates.push([coordinates[0][0], coordinates[0][1]]);
+            if (coordinates.length > 0) {
+              coordinates.push([coordinates[0][0], coordinates[0][1]]);
+            }
             
             const geoJSON = {
               type: "Polygon",
@@ -126,75 +170,52 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
             }
           };
           
+          // Initial coordinates update
           updateCoordinates();
           
-          // Add listeners for polygon editing
-          const listener1 = window.google.maps.event.addListener(polygon.getPath(), 'insert_at', updateCoordinates);
-          const listener2 = window.google.maps.event.addListener(polygon.getPath(), 'remove_at', updateCoordinates);
-          const listener3 = window.google.maps.event.addListener(polygon.getPath(), 'set_at', updateCoordinates);
-          const listener4 = window.google.maps.event.addListener(polygon, 'dragend', updateCoordinates);
-        });
+          // Add event listeners for polygon editing
+          window.google.maps.event.addListener(polygon.getPath(), 'insert_at', updateCoordinates);
+          window.google.maps.event.addListener(polygon.getPath(), 'remove_at', updateCoordinates);
+          window.google.maps.event.addListener(polygon.getPath(), 'set_at', updateCoordinates);
+          window.google.maps.event.addListener(polygon, 'dragend', updateCoordinates);
+        };
+        
+        // Add the event listener
+        window.google.maps.event.addListener(drawingManager, 'polygoncomplete', handlePolygonComplete);
       }
       
-      // Cleanup function
-      return () => {
-        // Clean up the map instance
-        if (newMap) {
-          // Remove all event listeners
-          window.google.maps.event.clearInstanceListeners(newMap);
-        }
-        
-        // Clean up drawing manager
-        if (drawingManager) {
-          drawingManager.setMap(null);
-          window.google.maps.event.clearInstanceListeners(drawingManager);
-        }
-        
-        // Safely clean up polygons
-        if (fieldPolygons && fieldPolygons.length > 0) {
-          fieldPolygons.forEach(polygon => {
-            if (polygon && polygon.setMap) {
-              polygon.setMap(null);
-              if (window.google && window.google.maps) {
-                window.google.maps.event.clearInstanceListeners(polygon);
-              }
-            }
-          });
-        }
-        
-        // Clean up drawn polygon
-        if (drawnPolygon && drawnPolygon.setMap) {
-          drawnPolygon.setMap(null);
-          if (window.google && window.google.maps) {
-            window.google.maps.event.clearInstanceListeners(drawnPolygon);
-          }
-        }
-      };
+      // Display fields when map is initialized
+      displayFields(mapInstance);
+      
     } catch (err) {
       console.error("Error initializing map:", err);
       setError("Failed to initialize map");
     }
-  }, [location.coordinates.latitude, location.coordinates.longitude, isLoading]);
+  }, [isMapLoaded, location.coordinates.latitude, location.coordinates.longitude, editable, onBoundaryChange]);
   
-  // Display field polygons on the map
+  // Update field display when fields change
   useEffect(() => {
-    if (!map || !window.google || !window.google.maps) return;
+    if (isMapLoaded && mapInstanceRef.current) {
+      displayFields(mapInstanceRef.current);
+    }
+  }, [fields, isMapLoaded]);
+  
+  // Function to display fields on the map
+  const displayFields = (mapInstance: any) => {
+    if (!mapInstance || !window.google || !window.google.maps) return;
     
     try {
-      // Create a local reference to maintain the list of current polygons
-      let currentPolygons: any[] = [];
+      // Clear previous polygons
+      polygonsRef.current.forEach(polygon => {
+        if (polygon && typeof polygon.setMap === 'function') {
+          polygon.setMap(null);
+        }
+      });
       
-      // Safely clean up existing polygons
-      if (fieldPolygons && fieldPolygons.length > 0) {
-        fieldPolygons.forEach(polygon => {
-          if (polygon && polygon.setMap) {
-            polygon.setMap(null);
-            window.google.maps.event.clearInstanceListeners(polygon);
-          }
-        });
-      }
+      // Create new array to store polygons
+      const newPolygons: any[] = [];
       
-      // Create new polygons for each field
+      // Create polygons for each field
       fields.forEach((field, index) => {
         try {
           if (!field.coordinates) return;
@@ -216,6 +237,7 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
             ];
             const color = colors[index % colors.length];
             
+            // Create polygon
             const polygon = new window.google.maps.Polygon({
               paths,
               strokeColor: color.stroke,
@@ -223,10 +245,10 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
               strokeWeight: 2,
               fillColor: color.fill,
               fillOpacity: 0.35,
-              map
+              map: mapInstance
             });
             
-            // Add field info window on click
+            // Add info window on click
             window.google.maps.event.addListener(polygon, 'click', function(event: any) {
               const infoWindow = new window.google.maps.InfoWindow({
                 content: `
@@ -239,24 +261,25 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
                 position: event.latLng
               });
               
-              infoWindow.open(map);
+              infoWindow.open(mapInstance);
             });
             
-            currentPolygons.push(polygon);
+            newPolygons.push(polygon);
           }
         } catch (error) {
           console.error(`Failed to parse field coordinates for field ${field.id}:`, error);
         }
       });
       
-      // Update state with new polygons
-      setFieldPolygons(currentPolygons);
+      // Update polygons reference
+      polygonsRef.current = newPolygons;
       
-      // Fit bounds to show all fields if we have any
-      if (currentPolygons.length > 0 && window.google.maps.LatLngBounds) {
+      // Fit bounds to show all fields
+      if (newPolygons.length > 0) {
         try {
           const bounds = new window.google.maps.LatLngBounds();
-          currentPolygons.forEach(polygon => {
+          
+          newPolygons.forEach(polygon => {
             if (polygon && polygon.getPath) {
               const path = polygon.getPath();
               for (let i = 0; i < path.getLength(); i++) {
@@ -264,38 +287,25 @@ export default function MapComponent({ fields, editable = false, onBoundaryChang
               }
             }
           });
-          map.fitBounds(bounds);
+          
+          mapInstance.fitBounds(bounds);
         } catch (err) {
           console.error("Error fitting bounds:", err);
         }
       }
-      
-      // Return cleanup function
-      return () => {
-        // Safely clean up polygons
-        currentPolygons.forEach(polygon => {
-          if (polygon && polygon.setMap) {
-            polygon.setMap(null);
-            if (window.google && window.google.maps) {
-              window.google.maps.event.clearInstanceListeners(polygon);
-            }
-          }
-        });
-      };
     } catch (err) {
       console.error("Error displaying fields:", err);
       setError("Failed to display fields");
     }
-  }, [map, fields]);
+  };
   
-  // Render map or error message
   return (
     <div 
       ref={mapRef} 
       className="w-full h-full relative"
       style={{ minHeight: '300px', background: '#E0E0E0' }}
     >
-      {(isLoading || (!map && !error)) && (
+      {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center text-gray-500">
           <div className="text-center">
             <span className="material-icons text-4xl">map</span>
